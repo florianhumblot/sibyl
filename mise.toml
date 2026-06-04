@@ -1,0 +1,37 @@
+[settings]
+env_shell_expand = true
+
+[env]
+DBNAME = "//127.0.0.1:1521/FREEPDB1"
+DBUSER = "sibyl"
+DBPASS = "Or4cl3"
+DBAUSER = "sys"
+DBAPASS = "Or4cl3"
+OCI_LIB_DIR = "C:\\Oracle\\instantclient-basic-windows.x64-23.4.0.24.05\\instantclient_23_4\\sdk\\lib\\msvc"
+_.path = "C:\\Oracle\\instantclient-basic-windows.x64-23.4.0.24.05\\instantclient_23_4"
+ORA_TZFILE = "{{config_root}}\\etc\\timezlrg_45.dat"
+
+
+[tasks."db:start"]
+description = "Start the ephemeral Oracle database container"
+run = "docker compose up -d"
+
+[tasks."db:stop"]
+description = "Stop the ephemeral Oracle database container"
+run = "docker compose down"
+
+[tasks."db:wait"]
+description = "Wait for the database container to be healthy"
+run = '''powershell -Command "do { Start-Sleep 2; `$s = (docker inspect sibyl-oracle-db | ConvertFrom-Json).State.Health.Status } until (`$s -eq 'healthy')"'''
+
+[tasks."db:seed"]
+description = "Seed the Oracle database container using 19.2 sample schemas"
+run = "python etc/seed.py"
+
+[tasks.test]
+description = "Run all integration tests"
+depends = ["db:start", "db:wait", "db:seed"]
+run = [
+  "cargo test --features blocking",
+  "cargo test --features nonblocking,tokio"
+]

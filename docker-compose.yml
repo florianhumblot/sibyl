@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  oracle:
+    image: gvenzl/oracle-free:23-slim-faststart
+    container_name: sibyl-oracle-db
+    ports:
+      - "1521:1521"
+    environment:
+      - ORACLE_PASSWORD=Or4cl3
+    volumes:
+      - ./etc/db-sample-schemas-19.2:/db-sample-schemas
+      - ./etc/create_sandbox.sql:/create_sandbox.sql
+      - ./etc/media:/media
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
