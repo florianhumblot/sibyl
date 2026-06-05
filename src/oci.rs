@@ -812,6 +812,16 @@ extern "C" {
         mode:       u32
     ) -> i32;
 
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/bind-define-describe-functions.html#GUID-E5B7FE08-54EB-4328-8686-2BDEAA25BE21
+    fn OCIBindArrayOfStruct(
+        bindp:      *const OCIBind,
+        errhp:      *const OCIError,
+        pvskip:     u32,
+        indskip:    u32,
+        alenskip:   u32,
+        rcodeskip:  u32
+    ) -> i32;
+
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/bind-define-describe-functions.html#GUID-030270CB-346A-412E-B3B3-556DD6947BE2
     // fn OCIBindDynamic(
     //     bindp:      *const OCIBind,
@@ -2360,6 +2370,37 @@ pub(crate) fn bind_by_pos(
 ) -> Result<()> {
     ok_or_oci_err!(|errhp|
         OCIBindByPos2(stmtp, bindpp, errhp, position, valuep, value_sz, dty, indp, alenp, std::ptr::null_mut::<u16>(), 0, std::ptr::null_mut::<u32>(), mode)
+    )
+}
+
+/// Binds an array of values to a parameter placeholder for batch execution.
+pub(crate) fn bind_by_pos_batch(
+    stmtp:      &OCIStmt,
+    bindpp:     *mut *mut OCIBind,
+    errhp:      &OCIError,
+    position:   u32,
+    valuep:     *mut c_void,
+    value_sz:   i64,
+    dty:        u16,
+    indp:       *mut i16,
+    alenp:      *mut u32,
+    mode:       u32
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCIBindByPos2(stmtp, bindpp, errhp, position, valuep, value_sz, dty, indp, alenp, std::ptr::null_mut::<u16>(), 0, std::ptr::null_mut::<u32>(), mode)
+    )
+}
+
+pub(crate) fn bind_array_of_struct(
+    bindp:      *mut OCIBind,
+    errhp:      &OCIError,
+    pvskip:     u32,
+    indskip:    u32,
+    alenskip:   u32,
+    rcodeskip:  u32
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCIBindArrayOfStruct(bindp, errhp, pvskip, indskip, alenskip, rcodeskip)
     )
 }
 

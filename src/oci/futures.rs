@@ -194,6 +194,10 @@ impl<'a> StmtExecute<'a> {
         let iter: u32 = if typ == OCI_STMT_SELECT { 0 } else { 1 };
         Self { ctx, err, stmt, iter}
     }
+
+    pub(crate) fn with_iters(ctx: Arc<SvcCtx>, err: &'a OCIError, stmt: &'a OCIStmt, iters: u32) -> Self {
+        Self { ctx, err, stmt, iter: iters }
+    }
 }
 
 impl<'a> Future for StmtExecute<'a> {

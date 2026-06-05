@@ -65,7 +65,18 @@ begin
 end;
 /
 
--- CONNECT sibyl/Or4cl3
+GRANT SELECT ON V_$SESSION TO sibyl;
+
+DECLARE
+    name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
+BEGIN
+    EXECUTE IMMEDIATE 'CREATE SEQUENCE hr.departments_seq START WITH 280 INCREMENT BY 10';
+EXCEPTION
+    WHEN name_already_used THEN NULL;
+END;
+/
+
+CONNECT sibyl/Or4cl3@localhost:1521/FREEPDB1
 
 DECLARE
     name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
@@ -178,3 +189,53 @@ EXCEPTION
     WHEN name_already_used THEN NULL;
 END;
 /
+
+CREATE OR REPLACE PACKAGE SessionCustomizer AS
+  TYPE prop_t IS TABLE OF VARCHAR2(256) INDEX BY VARCHAR2(120);
+  PROCEDURE ParseTag (tag VARCHAR2, properties OUT prop_t);
+  PROCEDURE FixSessionState (requested_tag VARCHAR2, actual_tag VARCHAR2);
+END;
+/
+
+CREATE OR REPLACE PACKAGE BODY SessionCustomizer AS
+  PROCEDURE ParseTag (tag VARCHAR2, properties OUT prop_t) IS
+    semi_pos  INT := 0;
+    name_pos  INT;
+    equal_pos INT;
+    name      VARCHAR2(120);
+    value     VARCHAR2(256);
+  BEGIN
+    WHILE semi_pos <= Length(tag) LOOP
+      name_pos := semi_pos + 1;
+      semi_pos := InStr(tag, ';', semi_pos + 1);
+      IF semi_pos = 0 THEN
+        semi_pos := Length(tag) + 1;
+      END IF;
+      equal_pos := InStr(tag, '=', name_pos + 1);
+      IF equal_pos != 0 AND equal_pos + 1 < semi_pos THEN
+        name  := SubStr(tag, name_pos, equal_pos - name_pos);
+        value := SubStr(tag, equal_pos + 1, semi_pos - equal_pos - 1);
+        properties(name) := value;
+      END IF;
+    END LOOP;
+  END;
+
+  PROCEDURE FixSessionState (requested_tag VARCHAR2, actual_tag VARCHAR2) IS
+    req_props prop_t;
+    act_props prop_t;
+    prop_name VARCHAR2(120);
+  BEGIN
+    ParseTag(requested_tag, req_props);
+    ParseTag(actual_tag, act_props);
+
+    prop_name := req_props.FIRST;
+    WHILE prop_name IS NOT NULL LOOP
+      IF NOT act_props.EXISTS(prop_name) OR act_props(prop_name) != req_props(prop_name) THEN
+        EXECUTE IMMEDIATE 'ALTER SESSION SET ' || prop_name || '=''' || req_props(prop_name) || '''';
+      END IF;
+      prop_name := req_props.NEXT(prop_name);
+    END LOOP;
+  END;
+END;
+/
+

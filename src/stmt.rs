@@ -6,6 +6,8 @@ mod cols;
 mod cursor;
 mod rows;
 mod data;
+pub(crate) mod batch_bind;
+mod batch_args;
 
 #[cfg(feature="blocking")]
 #[cfg_attr(docsrs, doc(cfg(feature="blocking")))]
@@ -16,6 +18,7 @@ mod blocking;
 mod nonblocking;
 
 pub use args::ToSql;
+pub use batch_args::ToBatchSql;
 pub use data::FromSql;
 pub use bind::Params;
 pub use cursor::Cursor;
