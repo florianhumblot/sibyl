@@ -1,6 +1,6 @@
 //! Nonblocking SQL statement methods
 
-use super::{Statement, bind::Params, cols::{DEFAULT_LONG_BUFFER_SIZE, Columns}};
+use super::{Statement, bind::Params, cols::{DEFAULT_LONG_BUFFER_SIZE, Columns}, ToBatchSql, batch_bind};
 use crate::{Result, oci::*, Session, Error, Rows, Cursor, ToSql, Row};
 use parking_lot::RwLock;
 use once_cell::sync::OnceCell;
@@ -87,6 +87,41 @@ impl<'a> Statement<'a> {
             params.read().update_out_args(&mut args)?;
         }
         Ok(num_rows)
+    }
+
+    /**
+    Executes the prepared statement in batch mode (array DML).
+
+    # Parameters
+
+    * `batch_size` - The number of rows in the batch (must be greater than 0)
+    * `args` - Batch SQL statement arguments (e.g. slices of values)
+
+    # Returns
+
+    The number of rows affected.
+    */
+    pub async fn execute_batch(&self, batch_size: usize, mut args: impl ToBatchSql) -> Result<usize> {
+        if batch_size == 0 {
+            return Err(Error::new("Batch size must be greater than 0"));
+        }
+        let checked_batch_u32 = u32::try_from(batch_size)
+            .map_err(|_| Error::new("Batch size exceeds u32::MAX"))?;
+        let stmt_type: u16 = self.get_attr(OCI_ATTR_STMT_TYPE)?;
+        if stmt_type == OCI_STMT_SELECT {
+            return Err(Error::new("Use `query` to execute SELECT"));
+        }
+        if let Some(mut batch_params) = batch_bind::BatchParams::new(&self.stmt, &self.err, batch_size)? {
+            args.bind_batch_to(0, batch_size, &mut batch_params, &self.stmt, &self.err)?;
+            futures::StmtExecute::with_iters(self.svc.clone(), &self.err, &self.stmt, checked_batch_u32).await?;
+            let num_rows = self.row_count()?;
+            args.update_batch_from_bind(0, batch_size, &batch_params)?;
+            Ok(num_rows)
+        } else {
+            futures::StmtExecute::with_iters(self.svc.clone(), &self.err, &self.stmt, checked_batch_u32).await?;
+            let num_rows = self.row_count()?;
+            Ok(num_rows)
+        }
     }
 
     /**

@@ -2,7 +2,7 @@
 
 use super::{
     Statement, Cursor, Params, Columns, Rows,
-    cols::DEFAULT_LONG_BUFFER_SIZE,
+    cols::DEFAULT_LONG_BUFFER_SIZE, ToBatchSql, batch_bind,
 };
 use crate::{Error, Result, oci::{self, *}, Session, ToSql, Row};
 use parking_lot::RwLock;
@@ -96,6 +96,41 @@ impl<'a> Statement<'a> {
             params.read().update_out_args(&mut args)?;
         }
         Ok(num_rows)
+    }
+
+    /**
+    Executes the prepared statement in batch mode (array DML).
+
+    # Parameters
+
+    * `batch_size` - The number of rows in the batch (must be greater than 0)
+    * `args` - Batch SQL statement arguments (e.g. slices of values)
+
+    # Returns
+
+    The number of rows affected.
+    */
+    pub fn execute_batch(&self, batch_size: usize, mut args: impl ToBatchSql) -> Result<usize> {
+        if batch_size == 0 {
+            return Err(Error::new("Batch size must be greater than 0"));
+        }
+        let checked_batch_u32 = u32::try_from(batch_size)
+            .map_err(|_| Error::new("Batch size exceeds u32::MAX"))?;
+        let stmt_type: u16 = self.get_attr(OCI_ATTR_STMT_TYPE)?;
+        if stmt_type == OCI_STMT_SELECT {
+            return Err(Error::new("Use `query` to execute SELECT"));
+        }
+        if let Some(mut batch_params) = batch_bind::BatchParams::new(&self.stmt, &self.err, batch_size)? {
+            args.bind_batch_to(0, batch_size, &mut batch_params, &self.stmt, &self.err)?;
+            oci::stmt_execute(self.as_ref(), &self.stmt, &self.err, checked_batch_u32, 0, OCI_DEFAULT)?;
+            let num_rows = self.row_count()?;
+            args.update_batch_from_bind(0, batch_size, &batch_params)?;
+            Ok(num_rows)
+        } else {
+            oci::stmt_execute(self.as_ref(), &self.stmt, &self.err, checked_batch_u32, 0, OCI_DEFAULT)?;
+            let num_rows = self.row_count()?;
+            Ok(num_rows)
+        }
     }
 
     /**
